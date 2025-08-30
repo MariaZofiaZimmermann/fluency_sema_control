@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Countdown Experiment — Perfectly Centered Timers</title>
+
+  <!-- jsPsych core + plugins (v6.3.1) -->
+  <script src="https://cdn.jsdelivr.net/npm/jspsych@6.3.1/jspsych.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspsych@6.3.1/plugins/jspsych-html-keyboard-response.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspsych@6.3.1/plugins/jspsych-preload.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspsych@6.3.1/plugins/jspsych-call-function.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/jspsych@6.3.1/css/jspsych.css" rel="stylesheet" />
+
+  <style>
+    html, body { height: 100%; margin: 0; }
+    #jspsych-content { max-width: none; }
+    .fullscreen-center {
+      height: 100vh;
+      width: 100vw;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    img.stim {
+      width: 800px;
+      max-width: 90%;
+      margin-bottom: 20px;
+      display: block;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .countdown {
+      font-size: 120px;
+      line-height: 1;
+      text-align: center;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+    .end-text  { font-size: 32px; text-align: center; margin-top: 30px; }
+    .final-text{ font-size: 48px; text-align: center; margin-top: 30px; }
+    .center    { text-align: center; }
+    button     { font-size: 24px; padding: 10px 25px; }
+    body { background: #fff; }
+  </style>
+</head>
+<body></body>
+
+<script>
+/* ======= CONFIG ======= */
+// Set to true only if 'beep.mp3' and 'double_beep.mp3' exist next to this file.
+var USE_BEEPS = true;
+
+// Filenames (adjust if yours differ)
+var FILES = {
+  testImage: 'test_image1.jpeg',
+  startImage: 'start_exp_image.jpeg',
+  exp1: 'exp_image1.jpeg',
+  exp2: 'exp_image2.jpeg',
+  exp3: 'exp_image3.jpeg',
+  beep: 'beep.mp3',
+  doubleBeep: 'double_beep.mp3'
+};
+
+// Create reusable Audio elements (benefit from HTTP cache and preload)
+var beepAudio = new Audio(FILES.beep);
+var doubleBeepAudio = new Audio(FILES.doubleBeep);
+beepAudio.preload = 'auto';
+doubleBeepAudio.preload = 'auto';
+
+var timeline = [];
+
+/* ======= PRELOAD ======= */
+timeline.push({
+  type: 'preload',
+  images: [FILES.testImage, FILES.startImage, FILES.exp1, FILES.exp2, FILES.exp3],
+  audio: USE_BEEPS ? [FILES.beep, FILES.doubleBeep] : [],
+  continue_after_error: false
+});
+
+/* ======= FLOW ======= */
+
+// START button (begin)
+timeline.push({
+  type: 'html-keyboard-response',
+  stimulus:
+    '<div class="center">' +
+      '<button onclick="jsPsych.finishTrial()">START</button>' +
+    '</div>',
+  choices: jsPsych.NO_KEYS
+});
+
+// Unlock audio on first user interaction to satisfy autoplay policies
+if (USE_BEEPS) {
+  timeline.push({
+    type: 'call-function',
+    func: function() {
+      try {
+        // Quietly play & pause to grant future programmatic playback
+        var vol1 = beepAudio.volume, vol2 = doubleBeepAudio.volume;
+        beepAudio.volume = 0.001;
+        doubleBeepAudio.volume = 0.001;
+        beepAudio.play().then(function(){ beepAudio.pause(); beepAudio.currentTime = 0; beepAudio.volume = vol1; }).catch(function(){});
+        doubleBeepAudio.play().then(function(){ doubleBeepAudio.pause(); doubleBeepAudio.currentTime = 0; doubleBeepAudio.volume = vol2; }).catch(function(){});
+      } catch(e) {}
+    }
+  });
+}
+
+// "Test image" + START
+timeline.push({
+  type: 'html-keyboard-response',
+  stimulus:
+    '<div class="center">' +
+      '<img class="stim" src="' + FILES.testImage + '" alt="test image" />' +
+      '<br />' +
+      '<button onclick="jsPsych.finishTrial()">START</button>' +
+    '</div>',
+  choices: jsPsych.NO_KEYS
+});
+
+// 15-second countdown (15 → 0) — numbers centered
+for (var i = 15; i >= 0; i--) {
+  timeline.push({
+    type: 'html-keyboard-response',
+    stimulus:
+      '<div class="fullscreen-center">' +
+        '<div class="countdown">' + i + '</div>' +
+      '</div>',
+    choices: jsPsych.NO_KEYS,
+    trial_duration: 1000
+  });
+}
+
+// After 15s countdown – show KONIEC CZASU for 2s
+timeline.push({
+  type: 'html-keyboard-response',
+  stimulus: '<div class="end-text">KONIEC CZASU</div>',
+  choices: jsPsych.NO_KEYS,
+  trial_duration: 2000
+});
+
+// Helper to add an "experimental image" block that:
+// (1) shows the image alone for 5s, THEN
+// (2) plays a beep and starts a 60→1 countdown with NUMBERS ONLY (NO IMAGE), centered, THEN
+// (3) plays a double beep and shows an end screen.
+function addExpBlock(imageFile, isFinal) {
+  // (1) Preview image for 5 seconds (image only)
+  timeline.push({
+    type: 'html-keyboard-response',
+    stimulus:
+      '<div class="center">' +
+        '<img class="stim" src="' + imageFile + '" alt="experimental image" />' +
+      '</div>',
+    choices: jsPsych.NO_KEYS,
+    trial_duration: 5000
+  });
+
+  // (2) Beep exactly when the timer starts
+  if (USE_BEEPS) {
+    timeline.push({
+      type: 'call-function',
+      func: function() {
+        try { beepAudio.currentTime = 0; beepAudio.play().catch(function(){}); } catch(e) {}
+      }
+    });
+  }
+
+  // (2) 60 -> 1 seconds with NUMBERS ONLY (NO IMAGE), centered
+  for (var s = 60; s >= 1; s--) {
+    timeline.push({
+      type: 'html-keyboard-response',
+      stimulus:
+        '<div class="fullscreen-center">' +
+          '<div class="countdown">' + s + '</div>' +
+        '</div>',
+      choices: jsPsych.NO_KEYS,
+      trial_duration: 1000
+    });
+  }
+
+  // (3) Double beep immediately after the 60s have elapsed
+  if (USE_BEEPS) {
+    timeline.push({
+      type: 'call-function',
+      func: function() {
+        try { doubleBeepAudio.currentTime = 0; doubleBeepAudio.play().catch(function(){}); } catch(e) {}
+      }
+    });
+  }
+
+  // End screens
+  if (!isFinal) {
+    timeline.push({
+      type: 'html-keyboard-response',
+      stimulus:
+        '<div class="center">' +
+          '<div class="end-text">KONIEC CZASU</div>' +
+          '<div style="margin-top: 20px;">' +
+            '<button onclick="jsPsych.finishTrial()">DALEJ</button>' +
+          '</div>' +
+        '</div>',
+      choices: jsPsych.NO_KEYS
+    });
+  } else {
+    timeline.push({
+      type: 'html-keyboard-response',
+      stimulus: '<div class="final-text">KONIEC</div>',
+      choices: jsPsych.NO_KEYS,
+      trial_duration: 3000
+    });
+  }
+}
+
+// "Start exp" screen + START
+timeline.push({
+  type: 'html-keyboard-response',
+  stimulus:
+    '<div class="center">' +
+      '<img class="stim" src="' + FILES.startImage + '" alt="start experiment image" />' +
+      '<br />' +
+      '<button onclick="jsPsych.finishTrial()">START</button>' +
+    '</div>',
+  choices: jsPsych.NO_KEYS
+});
+
+// Experimental images
+addExpBlock(FILES.exp1, false);
+addExpBlock(FILES.exp2, false);
+addExpBlock(FILES.exp3, true); // Final block – ends with KONIEC only
+
+// Start experiment
+jsPsych.init({ timeline: timeline });
+</script>
+</html>
